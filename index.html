@@ -113,6 +113,15 @@ form.write input{background:var(--bg)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips button{border:0;background:var(--bg);color:var(--ink2);border-radius:999px;padding:6px 12px;font-size:.88rem;font-weight:600;cursor:pointer}
 .chips button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+/* 해시태그 */
+.tag-pick{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tag-pick > label{font-size:.92rem;font-weight:700;color:var(--ink2)}
+.tag-pick .chips button{background:var(--sub)}
+.tag-pick .chips button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.tag-add{display:flex;gap:8px}
+.tag-add input{flex:1;min-width:0;padding:10px 14px}
+.tagline{display:flex;flex-wrap:wrap;gap:6px}
+.tagline span{background:var(--accent-weak);color:var(--accent);border-radius:999px;padding:4px 11px;font-weight:700;font-size:.92rem}
 
 /* ===== 포스터: 240×404 표지 + 44 아래 줄. 지도 배율에 따라 통째로 확대·축소 ===== */
 .layer .poster{position:absolute;left:0;top:0;transform-origin:50% 100%;pointer-events:auto}
@@ -460,8 +469,8 @@ var api = LIVE ? {
     if (!x) throw new Error("이미 지워진 글입니다.");
     if (x.name !== p.name && p.name !== DEMO_TEACHER) throw new Error("본인이 쓴 글만 고칠 수 있습니다.");
     if (x.url !== p.url){ x.image = ""; x.site = ""; }
-    x.title = p.title; x.url = p.url; x.intro = p.intro; x.place = p.place;
-    demoSave(); return { id:x.id, title:x.title, url:x.url, intro:x.intro, place:x.place, image:x.image, site:x.site }; }); },
+    x.title = p.title; x.url = p.url; x.intro = p.intro; x.place = p.place; x.tags = p.tags || "";
+    demoSave(); return { id:x.id, title:x.title, url:x.url, intro:x.intro, place:x.place, image:x.image, site:x.site, tags:x.tags }; }); },
   fav: function(p){ return P(function(){ demoAuth(p.name, p.pin);
     var a = demo.favs[p.name] = demo.favs[p.name] || [], i = a.indexOf(p.id);
     if (i < 0) a.push(p.id); else a.splice(i, 1);
@@ -469,7 +478,7 @@ var api = LIVE ? {
   list: function(){ return P(function(){ return JSON.parse(JSON.stringify(demo.posts)); }); },
   meta: function(url){ return P(function(){ return { title:"", image:"", site:"" }; }); },
   add: function(p){ return P(function(){ demoAuth(p.name, p.pin);
-    var post = { id:"d"+Date.now(), ts:Date.now(), name:p.name, unit:p.unit, title:p.title, url:p.url, intro:p.intro, place:p.place, lat:p.lat, lng:p.lng, image:p.image, site:p.site, steppers:[] };
+    var post = { id:"d"+Date.now(), ts:Date.now(), name:p.name, unit:p.unit, title:p.title, url:p.url, intro:p.intro, place:p.place, lat:p.lat, lng:p.lng, image:p.image, site:p.site, tags:p.tags || "", steppers:[] };
     demo.posts.push(post); demoSave(); return JSON.parse(JSON.stringify(post)); }); },
   remove: function(p){ return P(function(){ demoAuth(p.name, p.pin);
     var i = demo.posts.findIndex(function(x){ return x.id === p.id; });
@@ -503,6 +512,59 @@ function toast(t){ toastEl.textContent = t; toastEl.hidden = false; clearTimeout
 function findUnit(code){ for (var a of AREAS) for (var u of a.units) if (u.code === code) return { area:a, unit:u }; return null; }
 function safeUrl(u){ return /^https?:\/\/[^\s]+$/i.test(u || "") ? u : null; }
 function host(u){ try{ return new URL(u).hostname.replace(/^www\./, ""); }catch(e){ return ""; } }
+/* ===== 해시태그: 단원별 추천 개념어 (학생이 1~3개 고르거나 직접 씀). 여기만 고치면 추천 목록이 바뀝니다 ===== */
+var UNIT_TAGS = {
+  "12도탐01-01": ["익명성","이질성","개인주의","2차적관계","직주분리","1인가구","시간엄수","도시적무관심"],
+  "12도탐01-02": ["도시화","산업혁명","신도시","위성도시","계획도시","종주도시","메갈로폴리스","역도시화"],
+  "12도탐01-03": ["살기좋은도시","삶의질","녹지공간","대중교통","보행친화","15분도시","안전한도시","도시경쟁력"],
+  "12도탐02-01": ["도시체계","세계도시","도심","부도심","교외화","도심공동화","다핵구조","도시재생"],
+  "12도탐02-02": ["도시브랜딩","랜드마크","빌바오효과","문화자산","장소마케팅","지역축제","건축","도시이미지"],
+  "12도탐02-03": ["소비주의","서비스업","쇼핑몰","플랫폼경제","배달앱","젠트리피케이션","상권변화","관광"],
+  "12도탐02-04": ["스마트도시","모빌리티","자율주행","빅데이터","첨단산업","공유교통","디지털트윈","러스트벨트"],
+  "12도탐03-01": ["열섬현상","대기오염","도시홍수","기후위기","폭염","환경정의","도시재난","미세먼지"],
+  "12도탐03-02": ["주거문제","부동산","주거비","젠트리피케이션","공공임대","재개발","주거권","쪽방촌"],
+  "12도탐03-03": ["국제이주","다문화","에스닉타운","이주노동자","난민","차별","공존","거주지분화"],
+  "12도탐04-01": ["지속가능성","회복력","탄소중립","친환경교통","생태도시","기후적응","순환경제","녹색인프라"],
+  "12도탐04-02": ["시민참여","도시정치","주민참여예산","공공성","도시에대한권리","거버넌스","마을공동체","공론장"]
+};
+function cleanTag(s){ return String(s || "").replace(/[#,\s]/g, "").slice(0, 15); }
+function tagList(p){
+  var t = p && p.tags; if (!t) return [];
+  if (!Array.isArray(t)) t = String(t).split(/[,#\s]+/);
+  var seen = {};
+  return t.map(cleanTag).filter(function(x){ if (!x || seen[x]) return false; seen[x] = 1; return true; }).slice(0, 3);
+}
+// 고르기 화면: 단원 추천어를 누르거나 직접 써서 추가, 최대 3개
+function tagPicker(code, initial, id){
+  var sel = (initial || []).slice(0, 3), note = el("span", { class:"small muted" });
+  var chips = el("div", { class:"chips" });
+  var input = el("input", { id:id, maxlength:"15", placeholder:"직접 쓰기 (예: 층간소음)", autocomplete:"off" });
+  function draw(){
+    var list = (UNIT_TAGS[code] || []).slice();
+    sel.forEach(function(t){ if (list.indexOf(t) < 0) list.push(t); });
+    chips.textContent = "";
+    list.forEach(function(t){
+      var on = sel.indexOf(t) >= 0;
+      chips.appendChild(el("button", { type:"button", "aria-pressed":on ? "true" : "false", text:"#" + t, onclick:function(){ toggle(t); } }));
+    });
+    note.textContent = sel.length + " / 3개 골랐어요" + (sel.length >= 3 ? " · 바꾸려면 고른 태그를 다시 눌러 빼세요" : "");
+  }
+  function toggle(t){
+    var i = sel.indexOf(t);
+    if (i >= 0) sel.splice(i, 1); else if (sel.length < 3) sel.push(t); else { toast("해시태그는 3개까지 고를 수 있어요."); return; }
+    draw();
+  }
+  function addTyped(){
+    var t = cleanTag(input.value); if (!t) return;
+    if (sel.indexOf(t) < 0){ if (sel.length >= 3){ toast("해시태그는 3개까지 고를 수 있어요."); return; } sel.push(t); }
+    input.value = ""; draw();
+  }
+  input.addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === ","){ e.preventDefault(); addTyped(); } });
+  draw();
+  return { get:function(){ return sel.slice(); }, node:el("div", { class:"tag-pick" }, [
+    el("label", { for:id, text:"해시태그 (1~3개) · 기사·영상 내용과 관련된 개념" }), chips,
+    el("div", { class:"tag-add" }, [ input, el("button", { class:"ghost", type:"button", text:"추가", onclick:addTyped }) ]), note ]) };
+}
 function ytId(u){
   try{
     var x = new URL(u), h = x.hostname.replace(/^(www|m)\./, ""), m;
@@ -598,7 +660,7 @@ function openDetail(id){
   var p = posts.find(function(x){ return x.id === id; });
   if (!p){ if (dlg.open) dlg.close(); return; }
   detailId = id; dlgIn.textContent = "";
-  var f = findUnit(p.unit), sim = similar(p);
+  var f = findUnit(p.unit);
   dlg.style.setProperty("--c", f ? "var(--l" + f.area.no + ")" : "var(--l1)");
   dlgIn.appendChild(el("div", { class:"d-top" }, [
     el("span", { class:"code", text: f ? f.area.no + ". " + f.area.name + " · " + f.unit.title : "" }),
@@ -608,11 +670,9 @@ function openDetail(id){
     el("div", { class:"d-side" }, [
       el("h2", { text:p.title }),
       el("p", { class:"muted", text:p.place + " · " + p.name + " 님이 스크랩" }),
+      tagList(p).length ? el("div", { class:"tagline", "aria-label":"해시태그" }, tagList(p).map(function(t){ return el("span", { text:"#" + t }); })) : null,
       safeUrl(p.url) ? el("a", { class:"go", href:p.url, target:"_blank", rel:"noopener noreferrer", text:(kindOf(p.url) === "영상" ? "영상" : "기사") + " 보러 가기 ↗" }) : null,
-      canManage(p) ? manageBox(p) : null,
-      el("h3", { text:"이것과 비슷한 다른 사례", style:"margin-top:8px" }),
-      sim.length ? el("div", { class:"feed" }, sim.map(function(x){ return posterCard(x); }))
-                 : el("p", { class:"empty", text:"아직 비슷한 사례가 없습니다. 같은 단원이나 같은 도시의 스크랩이 더 올라오면 여기에 소개됩니다." })
+      canManage(p) ? manageBox(p) : null
     ])
   ]));
   if (!dlg.open) dlg.showModal();
@@ -633,18 +693,19 @@ function manageBox(p){
     var inTitle = el("input", { id:"e-title", value:p.title, maxlength:"80" });
     var inPlace = el("input", { id:"e-place", value:p.place, maxlength:"30" });
     var inIntro = el("input", { id:"e-intro", value:p.intro, maxlength:"60" });
+    var picker = tagPicker(p.unit, tagList(p), "e-tag");
     var msg = el("span", { class:"msg", role:"status" });
     var save = el("button", { class:"primary", type:"submit", text:"저장" });
     function field(label, input){ return el("div", { class:"f" }, [ el("label", { for:input.id, text:label }), input ]); }
     box.appendChild(el("form", { class:"edit", novalidate:"", onsubmit:function(e){
       e.preventDefault();
-      var q = { id:p.id, name:me.name, pin:me.pin, url:inUrl.value.trim(), title:inTitle.value.trim(), place:inPlace.value.trim(), intro:inIntro.value.trim() };
-      var err = !safeUrl(q.url) ? "링크는 http:// 또는 https:// 로 시작하는 주소여야 해요." : !q.title ? "제목을 입력하세요." : !q.place ? "도시나 국가 이름을 입력하세요." : !q.intro ? "한 문장 소개를 입력하세요." : "";
+      var q = { id:p.id, name:me.name, pin:me.pin, url:inUrl.value.trim(), title:inTitle.value.trim(), place:inPlace.value.trim(), intro:inIntro.value.trim(), tags:picker.get().join(",") };
+      var err = !safeUrl(q.url) ? "링크는 http:// 또는 https:// 로 시작하는 주소여야 해요." : !q.title ? "제목을 입력하세요." : !q.place ? "도시나 국가 이름을 입력하세요." : !q.intro ? "한 문장 소개를 입력하세요." : !q.tags ? "해시태그를 하나 이상 골라 주세요." : "";
       if (err){ msg.className = "msg err"; msg.textContent = err; return; }
       save.disabled = true; msg.className = "msg"; msg.textContent = "저장하는 중…";
       api.edit(q).then(function(r){ Object.assign(p, r); refresh(); toast("수정했어요."); })
         .catch(function(e){ save.disabled = false; msg.className = "msg err"; msg.textContent = e.message; });
-    } }, [ el("strong", { text:who + "으로 수정" }), field("링크", inUrl), field("제목", inTitle), field("도시·국가", inPlace), field("한 문장 소개 (띠지)", inIntro),
+    } }, [ el("strong", { text:who + "으로 수정" }), field("링크", inUrl), field("제목", inTitle), field("도시·국가", inPlace), field("한 문장 소개 (띠지)", inIntro), picker.node,
       el("div", { class:"auth-row" }, [ save, el("button", { class:"ghost", type:"button", text:"취소", onclick:function(){ refresh(); } }), msg ]) ]));
     inTitle.focus();
   } });
@@ -935,6 +996,7 @@ function renderUnit(code){
     }
     inUrl.addEventListener("change", loadMeta);
     inUrl.addEventListener("paste", function(){ setTimeout(loadMeta, 0); });
+    var picker = tagPicker(code, [], "f-tag");
     var chipBox = el("div", { class:"cand-box", hidden:"" });
     cand.input = inPlace; cand.box = chipBox;
     var placeTimer = 0;
@@ -951,16 +1013,16 @@ function renderUnit(code){
     composer.appendChild(el("form", { class:"stack", novalidate:"", onsubmit:function(e){
       e.preventDefault();
       var p = { unit:code, name:me.name, pin:me.pin, url:inUrl.value.trim(), title:inTitle.value.trim(), place:inPlace.value.trim(), intro:inIntro.value.trim(),
-                lat:view.draft && view.draft.lat, lng:view.draft && view.draft.lng, image:meta.image, site:meta.site };
+                lat:view.draft && view.draft.lat, lng:view.draft && view.draft.lng, image:meta.image, site:meta.site, tags:picker.get().join(",") };
       var err = !safeUrl(p.url) ? "링크는 http:// 또는 https:// 로 시작하는 주소여야 해요." : !p.title ? "제목을 입력하세요." : !p.place ? "도시나 국가 이름을 입력하세요."
-              : !p.intro ? "한 문장 소개를 입력하세요." : !view.draft ? "지도에서 위치를 눌러 주세요." : "";
+              : !p.intro ? "한 문장 소개를 입력하세요." : !p.tags ? "해시태그를 하나 이상 골라 주세요." : !view.draft ? "지도에서 위치를 눌러 주세요." : "";
       if (err){ msg.className = "msg err"; msg.textContent = err; return; }
       btn.disabled = true; msg.className = "msg"; msg.textContent = "올리는 중…";
       api.add(p).then(function(post){
         posts.push(post); renderAuth(); setOpen(false); renderPosters(); toast("포스터를 올렸어요."); flyTo(post);
       }).catch(function(e){ btn.disabled = false; msg.className = "msg err"; msg.textContent = e.message; });
     } }, [
-      field("링크", inUrl), field("제목", inTitle), field("도시·국가", inPlace), chipBox, field("한 문장 소개", inIntro),
+      field("링크", inUrl), field("제목", inTitle), field("도시·국가", inPlace), chipBox, field("한 문장 소개", inIntro), picker.node,
       loc, btn, msg,
       el("p", { class:"small muted", text:me.name + (isTeacher() ? " (교사 계정)" : " 님") + " 이름으로 올라가요." })
     ]));
